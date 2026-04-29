@@ -1,0 +1,179 @@
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using TMPro;
+
+/// Класс контроллера главного меню - наследуется от MonoBehaviour, чтобы его можно было повесить на GameObject в сцене
+public class MainMenuUI : MonoBehaviour  // Объявляем публичный класс, наследуемый от MonoBehaviour
+{
+    // Сериализуемые поля (настраиваются в Inspector)
+    // Атрибут Header для группировки полей в Inspector 
+    [Header("UI Panels")]  // Создаём заголовок "UI Panels" в окне Inspector
+    // private - поле доступно только внутри класса, [SerializeField] - показывает его в Inspector
+    [SerializeField] private GameObject mainMenuPanel;      // Ссылка на главную панель меню (для показа/скрытия)
+    [SerializeField] private GameObject settingsPanel;      // Ссылка на панель настроек (управление звуком, графикой)
+    [SerializeField] private GameObject infoPanel;          // Ссылка на панель с информацией о проекте
+
+    // Группируем кнопки в отдельную секцию Inspector для удобства
+    [Header("Buttons")]  // Заголовок "Buttons" в Inspector
+    [SerializeField] private Button startButton;            // Кнопка запуска игры (обработчик нажатия)
+    [SerializeField] private Button settingsButton;         // Кнопка перехода в настройки
+    [SerializeField] private Button infoButton;             // Кнопка показа информации о проекте
+    [SerializeField] private Button quitButton;             // Кнопка выхода из приложения
+    [SerializeField] private Button backButton;             // Кнопка возврата в главное меню
+    [SerializeField] private Button applySettingsButton;    // Кнопка сохранения применённых настроек
+
+    // Секция для элементов управления настройками
+    [Header("Settings")]  // Заголовок "Settings" в Inspector
+    [SerializeField] private Slider volumeSlider;           // Ползунок регулировки громкости (значения 0.0-1.0)
+    [SerializeField] private Toggle fullscreenToggle;       // Переключатель полноэкранного режима (вкл/выкл)
+    [SerializeField] private Dropdown qualityDropdown;      // Выпадающий список для выбора качества графики
+
+    // Секция для информационных элементов
+    [Header("Info")]  // Заголовок "Info" в Inspector
+    [SerializeField] private TextMeshProUGUI versionText;   // Текстовое поле для отображения версии приложения
+
+    // Внутренние поля
+    // Приватная строковая переменная для хранения имени сцены игры
+    // Выносим в отдельную переменную, чтобы не дублировать строку "GameScene" в коде
+    private string gameSceneName = "GameScene";  // Имя сцены, которая загрузится при старте игры
+
+    // Методы ЖИЗНЕННОГО цикла в юнити
+    // Start() вызывается Unity один раз перед первым обновлением кадра
+    // Используем для первоначальной настройки интерфейса
+    private void Start()  // Объявляем приватный метод Start без параметров
+    {
+        // Вызываем метод показа главной панели при запуске сцены
+        ShowPanel(mainMenuPanel);  // Показываем главное меню, скрываем остальные панели
+        // Настраиваем все кнопки - подписываем методы на события клика
+        SetupButtons();  // Регистрируем обработчики нажатий для всех кнопок
+        // Загружаем сохранённые ранее настройки пользователя из PlayerPrefs
+        LoadSettings();  // Читаем данные о громкости, качестве и режиме экрана
+        // Устанавливаем текст версии, берём актуальную версию из Application.version
+        versionText.text = $"Версия: {Application.version}";  // Интерполяция строки для прикольного вывода
+    }
+
+    // МЕТОД НАСТРОЙКИ ОБРАБОТЧИКОВ КНОПОК
+    /// Метод подписывает методы-обработчики на события onClick у кнопок
+    private void SetupButtons()  // Объявляем приватный метод настройки кнопок
+    {
+        // Проверяем кнопку на null перед подпиской - защита от ошибок в Inspector
+        if (startButton != null)  // Если ссылка на кнопку задана в Inspector
+            startButton.onClick.AddListener(StartGame);  // Добавляем метод StartGame в список слушателей события
+        // Аналогично для кнопки настроек - при клике покажем панель настроек
+        if (settingsButton != null)  // Проверка на наличие ссылки
+            settingsButton.onClick.AddListener(ShowSettings);  // Подписываем метод ShowSettings
+        // Кнопка "Информация" - показывает панель с данными о проекте
+        if (infoButton != null)  // Защита от NullReferenceException
+            infoButton.onClick.AddListener(ShowInfo);  // Вызываем метод показа инфо-панели
+        // Кнопка выхода - закрывает приложение
+        if (quitButton != null)  // Проверяем, назначена ли кнопка
+            quitButton.onClick.AddListener(QuitGame);  // Подписываем метод завершения работы
+        // Кнопка "Назад" - универсальная для возврата в главное меню
+        if (backButton != null)  // Проверка на null
+            backButton.onClick.AddListener(ShowMainMenu);  // Возвращаем пользователя в главное меню
+        // Кнопка применения настроек - сохраняет изменения и возвращает в меню
+        if (applySettingsButton != null)  // Защита от отсутствия ссылки
+            applySettingsButton.onClick.AddListener(ApplySettings);  // Сохраняем настройки при нажатии
+    }
+
+    // МЕТОДЫ НАВИГАЦИИ ПО ИНТЕРФЕЙСУ
+    /// Универсальный метод показа одной панели со скрытием остальных
+    /// <param name="panelToShow">Панель, которую нужно показать</param>
+    private void ShowPanel(GameObject panelToShow)  // Метод принимает GameObject-панель для отображения
+    {
+        // Скрываем все возможные панели, устанавливая active = false
+        mainMenuPanel.SetActive(false);  // Деактивируем главную панель меню
+        settingsPanel.SetActive(false);  // Деактивируем панель настроек
+        infoPanel.SetActive(false);  // Деактивируем информационную панель
+        // Активируем только ту панель, которую передали в параметре
+        panelToShow.SetActive(true);  // Включаем отображение нужной панели
+    }
+
+    /// Публичный метод запуска игры - вызывается при нажатии "Начать"
+    public void StartGame()  // Публичный метод без параметров для UnityEvents
+    {
+        // Сохраняем текущие настройки перед переходом в игру, чтобы они применились
+        SaveSettings();  // Записываем значения в PlayerPrefs
+        // Загружаем игровую сцену по имени через SceneManager
+        SceneManager.LoadScene(gameSceneName);  // Переключаемся на сцену с геймплеем
+    }
+    /// Показывает панель настроек и обновляет значения элементов
+    public void ShowSettings()  // Метод вызывается кнопкой "Настройки"
+    {
+        // Показываем панель настроек через универсальный метод
+        ShowPanel(settingsPanel);  // Скрываем остальные, показываем settingsPanel
+        LoadSettings();  // Обновляем значения слайдеров/переключателей актуальными данными
+    }
+
+    /// Показывает информационную панель о проекте
+    public void ShowInfo()  // Метод для кнопки "Информация"
+    {
+        // Просто показываем нужную панель, без дополнительных действий
+        ShowPanel(infoPanel);  // Активируем infoPanel, деактивируем остальные
+    }
+
+    /// Возврат в главное меню из любой вложенной панели
+    public void ShowMainMenu()  // Метод для кнопки "Назад"
+    {
+        // Показываем главную панель меню
+        ShowPanel(mainMenuPanel);  // Восстанавливаем состояние главного меню
+    }
+
+    /// Корректный выход из приложения с учётом редактора Unity
+    public void QuitGame()  // Метод завершения работы приложения
+    {
+        // Выводим сообщение в консоль для отладки и логирования
+        Debug.Log("Выход из приложения...");  // Запись в консоль Unity
+        Application.Quit();  // Команда закрытия приложения на целевой платформе
+
+        // Директива препроцессора - код выполнится только в редакторе Unity
+#if UNITY_EDITOR  // Условная компиляция для Unity Editor
+        UnityEditor.EditorApplication.isPlaying = false;  // Останавливаем play-mode в редакторе
+#endif  // Конец условной компиляции
+    }
+
+    // МЕТОДЫ РАБОТЫ С НАСТРОЙКАМИ
+    /// Применяет настройки и возвращает пользователя в главное меню
+    public void ApplySettings()  // Метод для кнопки "Применить"
+    {
+        // Сохраняем изменённые параметры в постоянную память
+        SaveSettings();  // Записываем данные в PlayerPrefs
+        // Возвращаем интерфейс в состояние главного меню
+        ShowMainMenu();  // Показываем mainMenuPanel
+    }
+
+    /// Сохраняет все текущие настройки в PlayerPrefs
+    private void SaveSettings()  // Приватный метод, вызывается внутри класса
+    {
+        // Сохраняем значение громкости (float от 0.0 до 1.0)
+        PlayerPrefs.SetFloat("MasterVolume", volumeSlider.value);  // Ключ "MasterVolume", значение из слайдера
+        // Сохраняем состояние полноэкранного режима (bool преобразуем в int)
+        PlayerPrefs.SetInt("Fullscreen", fullscreenToggle.isOn ? 1 : 0);  // 1 = true, 0 = false
+        // Сохраняем выбранный индекс качества графики из dropdown
+        PlayerPrefs.SetInt("QualityLevel", qualityDropdown.value);  // Индекс выбранного элемента
+        // Фиксируем все изменения в постоянном хранилище
+        PlayerPrefs.Save();  // Принудительная запись данных на диск
+        // Применяем уровень качества "на лету" через QualitySettings
+        QualitySettings.SetQualityLevel(qualityDropdown.value);  // Меняем качество графики сразу
+        // Устанавливаем режим отображения (полный экран / окно)
+        Screen.fullScreen = fullscreenToggle.isOn;  // Применяем настройку полноэкранного режима
+        // Выводим подтверждение в консоль для отладки
+        Debug.Log("Настройки сохранены");  // Лог для проверки работы метода
+    }
+
+    /// Загружает сохранённые настройки и применяет их к UI и системе
+    private void LoadSettings()  // Приватный метод инициализации настроек
+    {
+        // Загружаем громкость, если ключ не найден - используем 1.0 (максимум)
+        volumeSlider.value = PlayerPrefs.GetFloat("MasterVolume", 1.0f);  // Чтение float с дефолтом
+        // Загружаем режим экрана, дефолтное значение - включён (1 == true)
+        fullscreenToggle.isOn = PlayerPrefs.GetInt("Fullscreen", 1) == 1;  // Преобразуем int в bool
+        // Загружаем уровень качества, по умолчанию - Medium (индекс 2)
+        int quality = PlayerPrefs.GetInt("QualityLevel", 2);  // Читаем int с дефолтным значением
+        qualityDropdown.value = quality;  // Устанавливаем соответствующий пункт в dropdown
+        QualitySettings.SetQualityLevel(quality);  // Применяем качество к рендереру
+        // Применяем загруженную громкость к глобальному аудио-микшеру
+        AudioListener.volume = volumeSlider.value;  // Установка общей громкости игры
+    }
+}

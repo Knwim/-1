@@ -1,0 +1,244 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+// Объявляем публичный класс SettingsUI, наследуемый от MonoBehaviour - чтобы скрипт можно было повесить на GameObject в сцене
+public class SettingsUI : MonoBehaviour
+{
+    // Атрибут Header для группировки полей в Inspector - улучшает читаемость при настройке
+    [Header("Panels")]  // Создаём заголовок "Panels" в окне Inspector для визуального разделения
+    [SerializeField] private GameObject settingsPanel;        // Ссылка на панель настроек (GameObject) - управляем видимостью через SetActive
+    [SerializeField] private Button openSettingsButton;       // Кнопка открытия настроек - подписываем событие onClick
+    [SerializeField] private Button closeSettingsButton;      // Кнопка закрытия панели - возвращает игрока в игру
+    [SerializeField] private Button applyButton;              // Кнопка применения изменений - сохраняет настройки
+
+    // Группируем аудионастройки в отдельную секцию для удобства в Inspector
+    [Header("Audio Settings")]  // Заголовок "Audio Settings" в Inspector
+    [SerializeField] private Slider musicVolumeSlider;        // Ползунок громкости музыки - значение от 0.0 до 1.0
+    [SerializeField] private Slider sfxVolumeSlider;          // Ползунок громкости звуковых эффектов - значение от 0.0 до 1.0
+    [SerializeField] private Toggle muteToggle;               // Переключатель полного отключения звука - true/false
+
+    // Секция настроек графики для управления качеством и отображением
+    [Header("Graphics Settings")]  // Заголовок "Graphics Settings" в Inspector
+    [SerializeField] private Dropdown qualityDropdown;        // Выпадающий список качества графики - индексы соответствуют QualitySettings
+    [SerializeField] private Toggle fullscreenToggle;         // Переключатель полноэкранного режима - меняет Screen.fullScreen
+    [SerializeField] private Dropdown resolutionDropdown;     // Список разрешений экрана - заполняется динамически из Screen.resolutions
+
+    // Секция игровых настроек для управления геймплеем
+    [Header("Gameplay Settings")]  // Заголовок "Gameplay Settings" в Inspector
+    [SerializeField] private Toggle tutorialToggle;           // Переключатель показа обучения - влияет на логику туториала
+    [SerializeField] private Slider sensitivitySlider;        // Ползунок чувствительности управления - значение для настройки ввода
+
+    // Приватное булево поле для отслеживания изменений - нужно, чтобы спрашивать игрока о сохранении
+    private bool settingsChanged = false;  // Флаг: изменил ли игрок что-то в настройках (по умолчанию нет)
+
+
+    // ИНИЦИАЛИЗАЦИЯ
+
+    private void Start()  // Объявляем приватный метод инициализации
+    {
+        // Скрываем панель настроек при старте - игрок увидит её только по нажатию кнопки
+        settingsPanel.SetActive(false);  // Деактивируем GameObject, делая панель невидимой
+        // Настраиваем обработчики событий для всех кнопок и элементов управления
+        SetupButtons();  // Вызываем метод подписки на клики и изменения значений
+        // Загружаем сохранённые ранее настройки пользователя из постоянного хранилища
+        LoadSettings();  // Читаем данные из PlayerPrefs и применяем к UI-элементам
+        // Заполняем выпадающий список доступными разрешениями экрана этого устройства
+        PopulateResolutions();  // Динамически добавляем опции в resolutionDropdown
+    }
+    // НАСТРОЙКА КНОПОК
+
+    // Приватный метод для регистрации обработчиков событий - вызывается только из Start()
+    private void SetupButtons()  // Объявляем метод настройки кнопок
+    {
+        // Проверяем кнопку открытия на null перед подпиской - защита от ошибок в Inspector
+        if (openSettingsButton != null)  // Если ссылка назначена в редакторе
+            openSettingsButton.onClick.AddListener(OpenSettings);  // Подписываем метод OpenSettings на событие клика
+        // Аналогично для кнопки закрытия - проверка и подписка
+        if (closeSettingsButton != null)  // Защита от NullReferenceException
+            closeSettingsButton.onClick.AddListener(CloseSettings);  // Подписываем метод CloseSettings
+        // Кнопка применения настроек - сохраняет изменения
+        if (applyButton != null)  // Проверка наличия ссылки
+            applyButton.onClick.AddListener(ApplySettings);  // Подписываем метод ApplySettings
+        // Добавляем слушатель на изменение значения ползунка музыки - чтобы отслеживать изменения
+        if (musicVolumeSlider != null)  // Проверка на null
+            musicVolumeSlider.onValueChanged.AddListener(delegate { OnSettingsChanged(); });  // Используем delegate для метода без параметров
+        // Добавляем слушатель на переключение полноэкранного режима - тоже отслеживаем изменения
+        if (fullscreenToggle != null)  // Защита от ошибок
+            fullscreenToggle.onValueChanged.AddListener(delegate { OnSettingsChanged(); });  // Вызываем OnSettingsChanged при изменении
+    }
+    // УПРАВЛЕНИЕ ПАНЕЛЬЮ
+
+    // Публичный метод открытия панели настроек - вызывается из UI или других скриптов
+    public void OpenSettings()  // Объявляем публичный метод без параметров
+    {
+        // Показываем панель настроек, активируя её GameObject
+        settingsPanel.SetActive(true);  // Установка active = true делает панель видимой
+        // Загружаем актуальные значения из PlayerPrefs, чтобы игрок видел текущие настройки
+        LoadSettings();  // Обновляем UI-элементы сохранёнными данными
+        // Сбрасываем флаг изменений - только что открыли, значит изменений ещё нет
+        settingsChanged = false;  // Инициализируем состояние "без изменений"
+    }
+
+    // Публичный метод закрытия панели настроек
+    public void CloseSettings()  // Объявляем публичный метод
+    {
+        // Проверяем, были ли изменения в настройках - можно было бы показать диалог подтверждения
+        if (settingsChanged)  // Если игрок что-то поменял
+        {
+            // Если были изменения - спрашиваем применить ли (закомментировано для простоты)
+            // Для простоты просто закрываем без подтверждения - можно доработать позже
+        }
+        // Скрываем панель настроек, деактивируя её
+        settingsPanel.SetActive(false);  // Установка active = false скрывает панель
+    }
+
+    // Публичный метод применения и сохранения настроек
+    public void ApplySettings()  // Объявляем публичный метод
+    {
+        // Сохраняем все текущие значения в постоянное хранилище PlayerPrefs
+        SaveSettings();  // Вызываем метод записи данных на диск
+        // Сбрасываем флаг изменений - настройки применены, значит "чистое" состояние
+        settingsChanged = false;  // Обнуляем флаг после сохранения
+        // Показываем уведомление об успешном применении через систему уведомлений
+        if (NotificationSystem.Instance != null)  // Проверяем наличие синглтона уведомлений
+        {
+            // Вызываем метод показа успешного сообщения с текстом
+            NotificationSystem.Instance.ShowSuccess("Настройки применены!");  // Информируем игрока
+        }
+    }
+
+    // ЗАГРУЗКА НАСТРОЕК
+
+    // Приватный метод загрузки настроек из PlayerPrefs - инициализирует UI
+    private void LoadSettings()  // Объявляем приватный метод
+    {
+        // ЗАГРУЗКА АУДИОНАСТРОЕК 
+        // Загружаем громкость музыки, если ключ не найден - используем значение по умолчанию 0.5
+        musicVolumeSlider.value = PlayerPrefs.GetFloat("MusicVolume", 0.5f);  // Чтение float с дефолтом
+        // Загружаем громкость эффектов, дефолтное значение 0.8
+        sfxVolumeSlider.value = PlayerPrefs.GetFloat("SFXVolume", 0.8f);  // Чтение с запасом громкости
+        // Загружаем состояние mute, преобразуем int в bool (1 = true, 0 = false), дефолт - выключено
+        muteToggle.isOn = PlayerPrefs.GetInt("MuteAudio", 0) == 1;  // Конвертация из int в bool
+
+        // ЗАГРУЗКА ГРАФИЧЕСКИХ НАСТРОЕК 
+        // Загружаем индекс качества графики, дефолт - Medium (индекс 2)
+        qualityDropdown.value = PlayerPrefs.GetInt("QualityLevel", 2);  // Чтение индекса из списка
+        // Загружаем состояние полноэкранного режима, дефолт - включён
+        fullscreenToggle.isOn = PlayerPrefs.GetInt("Fullscreen", 1) == 1;  // Преобразование int в bool
+
+        // ЗАГРУЗКА РАЗРЕШЕНИЯ ЭКРАНА 
+        // Загружаем сохранённый индекс разрешения, дефолт - первый элемент (0)
+        int savedResolution = PlayerPrefs.GetInt("ResolutionIndex", 0);  // Чтение индекса
+        // Проверяем наличие dropdown и валидность индекса перед установкой значения
+        if (resolutionDropdown != null && savedResolution < resolutionDropdown.options.Count)  // Валидация
+        {
+            // Устанавливаем значение в dropdown, если индекс корректен
+            resolutionDropdown.value = savedResolution;  // Применение сохранённого выбора
+        }
+
+        // ЗАГРУЗКА НАСТРОЕК ГЕЙМПЛЕЯ 
+        // Загружаем флаг показа обучения, дефолт - показывать (1 = true)
+        tutorialToggle.isOn = PlayerPrefs.GetInt("ShowTutorial", 1) == 1;  // Чтение булева флага
+        // Загружаем чувствительность управления, дефолт - 1.0 (нормальная)
+        sensitivitySlider.value = PlayerPrefs.GetFloat("Sensitivity", 1f);  // Чтение float-значения
+    }
+
+    // Приватный метод сохранения настроек в PlayerPrefs
+    private void SaveSettings()  // Объявляем приватный метод сохранения
+    {
+        // СОХРАНЕНИЕ АУДИОНАСТРОЕК 
+        // Сохраняем текущее значение громкости музыки под ключом "MusicVolume"
+        PlayerPrefs.SetFloat("MusicVolume", musicVolumeSlider.value);  // Запись float в хранилище
+        // Сохраняем громкость звуковых эффектов
+        PlayerPrefs.SetFloat("SFXVolume", sfxVolumeSlider.value);  // Запись значения слайдера
+        // Сохраняем состояние mute, преобразуем bool в int (true = 1, false = 0)
+        PlayerPrefs.SetInt("MuteAudio", muteToggle.isOn ? 1 : 0);  // Тернарный оператор для конвертации
+        // Применяем изменения громкости сразу через аудиоменеджер, если он существует
+        if (AudioManager.Instance != null)  // Проверка наличия синглтона
+        {
+            // Устанавливаем громкость музыки в аудиосистеме
+            AudioManager.Instance.SetMusicVolume(musicVolumeSlider.value);  // Применение к музыке
+            // Устанавливаем громкость эффектов в аудиосистеме
+            AudioManager.Instance.SetSFXVolume(sfxVolumeSlider.value);  // Применение к SFX
+        }
+        // СОХРАНЕНИЕ ГРАФИЧЕСКИХ НАСТРОЕК 
+        // Сохраняем выбранный индекс качества графики
+        PlayerPrefs.SetInt("QualityLevel", qualityDropdown.value);  // Запись индекса
+        // Сохраняем состояние полноэкранного режима как int
+        PlayerPrefs.SetInt("Fullscreen", fullscreenToggle.isOn ? 1 : 0);  // Конвертация bool в int
+        // Применяем уровень качества графики "на лету" через Unity API
+        QualitySettings.SetQualityLevel(qualityDropdown.value);  // Мгновенное изменение качества
+        // Применяем режим отображения (полный экран / окно)
+        Screen.fullScreen = fullscreenToggle.isOn;  // Установка свойства Screen
+
+        // СОХРАНЕНИЕ И ПРИМЕНЕНИЕ РАЗРЕШЕНИЯ
+        // Проверяем наличие dropdown перед работой с ним
+        if (resolutionDropdown != null)  // Защита от null
+        {
+            // Сохраняем выбранный индекс разрешения
+            PlayerPrefs.SetInt("ResolutionIndex", resolutionDropdown.value);  // Запись индекса
+            // Применяем выбранное разрешение к экрану
+            ApplyResolution();  // Вызов метода установки разрешения
+        }
+
+        // СОХРАНЕНИЕ НАСТРОЕК ГЕЙМПЛЕЯ
+        // Сохраняем флаг показа обучения
+        PlayerPrefs.SetInt("ShowTutorial", tutorialToggle.isOn ? 1 : 0);  // Запись булева флага как int
+        // Сохраняем значение чувствительности
+        PlayerPrefs.SetFloat("Sensitivity", sensitivitySlider.value);  // Запись float-значения
+        // Фиксируем все изменения в постоянном хранилище - обязательный вызов
+        PlayerPrefs.Save();  // Принудительная запись данных на диск
+    }
+    // РАЗРЕШЕНИЯ
+
+    // Приватный метод заполнения списка разрешений экрана
+    private void PopulateResolutions()  // Объявляем метод инициализации dropdown
+    {
+        // Проверяем наличие dropdown перед работой - защита от ошибок
+        if (resolutionDropdown == null) return;  // Если нет компонента - выходим из метода
+        // Очищаем существующие опции в списке перед добавлением новых
+        resolutionDropdown.ClearOptions();  // Удаление всех предыдущих элементов
+        // Получаем массив всех поддерживаемых разрешений текущего устройства
+        Resolution[] resolutions = Screen.resolutions;  // Запрос к Unity API
+        // Создаём список строк для отображения в dropdown - используем полное пространство имён
+        System.Collections.Generic.List<string> options = new System.Collections.Generic.List<string>();  // Инициализация списка
+        // Проходим по каждому разрешению в массиве
+        foreach (Resolution res in resolutions)  // Цикл по всем доступным разрешениям
+        {
+            // Формируем читаемую строку: "ширинаxвысота @ частота обновления Гц"
+            string option = $"{res.width}x{res.height} @ {res.refreshRate}Hz";  // Интерполяция строки
+            // Добавляем сформированную строку в список опций
+            options.Add(option);  // Добавление элемента в коллекцию
+        }
+        // Передаём список строк в dropdown для отображения
+        resolutionDropdown.AddOptions(options);  // Заполнение UI-элемента опциями
+    }
+
+    // Приватный метод применения выбранного разрешения экрана
+    private void ApplyResolution()  // Объявляем метод установки разрешения
+    {
+        // Проверяем наличие dropdown перед использованием
+        if (resolutionDropdown == null) return;  // Защита от null-ссылок
+        // Получаем актуальный массив поддерживаемых разрешений
+        Resolution[] resolutions = Screen.resolutions;  // Запрос к Unity каждый раз (можно кэшировать)
+        // Получаем выбранный индекс из dropdown
+        int index = resolutionDropdown.value;  // Чтение текущего значения
+        // Проверяем, что индекс находится в допустимых границах массива
+        if (index < resolutions.Length)  // Валидация индекса
+        {
+            // Устанавливаем разрешение экрана через Unity API с учётом режима полноэкранности
+            Screen.SetResolution(resolutions[index].width,  // Ширина из выбранного разрешения
+                                resolutions[index].height,   // Высота из выбранного разрешения
+                                fullscreenToggle.isOn);      // Режим: полный экран или окно
+        }
+    }
+    // ОТСЛЕЖИВАНИЕ ИЗМЕНЕНИЙ
+
+    // Приватный метод, вызываемый при изменении любой настройки
+    private void OnSettingsChanged()  // Объявляем метод отслеживания изменений
+    {
+        // Устанавливаем флаг в true - игрок внёс изменения, которые нужно сохранить
+        settingsChanged = true;  // Маркер "есть несохранённые изменения"
+    }
+}
